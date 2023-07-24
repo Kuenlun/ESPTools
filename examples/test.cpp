@@ -1,7 +1,4 @@
-#ifdef ESP_TOOLS_DEBUG
-#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
-#endif
-#include <esp_log.h>
+#include "ESPTools/logger.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -20,7 +17,7 @@ void app_main()
 
   while (true)
   {
-    ESP_LOGI(LOG_TAG, "Test message");
+    ESPTOOLS_LOGV("Test message");
     vTaskDelay(pdMS_TO_TICKS(5000));
   }
 }
