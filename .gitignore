@@ -1,0 +1,8 @@
+/.pio
+/.vscode
+/include/secrets.h
+/sdkconfig.*
+!/sdkconfig.default*
+CMakeLists.txt
+*.crt
+*.key
