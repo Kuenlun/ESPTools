@@ -224,7 +224,6 @@ namespace ESPTools
     TimerHandle_t change_state_timer_;
     GpioState raw_state_;
     GpioState fsm_state_{GpioState::Undefined};
-    // See if it is needed ---------------------------------------------------------------------------------------------------------------
     SemaphoreHandle_t protect_timer_semaphore_{nullptr};
 
   }; // class Interrupt

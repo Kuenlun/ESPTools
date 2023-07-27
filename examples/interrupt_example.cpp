@@ -18,20 +18,20 @@ void app_main()
   esp_log_level_set(ESPTools::LOG_TAG, ESP_LOG_VERBOSE);
 
   // GPIO Pins
-  // static constexpr gpio_num_t pir_gpio_num{GPIO_NUM_2};
+  static constexpr gpio_num_t pir_gpio_num{GPIO_NUM_2};
   static constexpr gpio_num_t bed_gpio_num{GPIO_NUM_3};
 
   // Interruptions
-  // static ESPTools::Interrupt pir_interrupt(pir_gpio_num,
-  //                                         pdMS_TO_TICKS(100),
-  //                                         pdMS_TO_TICKS(5000),
-  //                                         GPIO_MODE_INPUT,
-  //                                         GPIO_PULLUP_DISABLE,
-  //                                         GPIO_PULLDOWN_ENABLE,
-  //                                         false);
+  static ESPTools::Interrupt pir_interrupt(pir_gpio_num,
+                                           pdMS_TO_TICKS(100),
+                                           pdMS_TO_TICKS(5000),
+                                           GPIO_MODE_INPUT,
+                                           GPIO_PULLUP_DISABLE,
+                                           GPIO_PULLDOWN_ENABLE,
+                                           false);
   static ESPTools::Interrupt bed_interrupt(bed_gpio_num,
-                                           pdMS_TO_TICKS(20),
-                                           pdMS_TO_TICKS(20),
+                                           pdMS_TO_TICKS(200),
+                                           pdMS_TO_TICKS(200),
                                            GPIO_MODE_INPUT,
                                            GPIO_PULLUP_ENABLE,
                                            GPIO_PULLDOWN_DISABLE,
@@ -41,7 +41,7 @@ void app_main()
   {
     if (bed_interrupt.WaitForSingleInterrupt(pdMS_TO_TICKS(10000)))
       ESPTOOLS_LOGI("(GPIO %u) Received Bed interrupt %s",
-                    bed_interrupt.GpioNum(), bed_interrupt.RawState().ToStr());
+                    bed_interrupt.GpioNum(), bed_interrupt.State().ToStr());
     else
       ESPTOOLS_LOGW("(GPIO %u) Bed interrupt timeout", bed_interrupt.GpioNum());
   }

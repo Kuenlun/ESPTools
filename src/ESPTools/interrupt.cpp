@@ -29,6 +29,7 @@ namespace ESPTools
     Interrupt &interrupt_obj{*static_cast<Interrupt *>(pvTimerGetTimerID(xTimer))};
     ESPTOOLS_LOGD("(GPIO %u) Inside timer callback with state %s",
                   interrupt_obj.GpioNum(), interrupt_obj.fsm_state_.ToStr());
+    xSemaphoreTake(interrupt_obj.protect_timer_semaphore_, 0);
     interrupt_obj.StateChanger();
   }
 
@@ -47,14 +48,20 @@ namespace ESPTools
     // using respective rise or fall time
     const TickType_t wait_time{(new_state == GpioState::High) ? GoHighTime() : GoLowTime()};
     if (wait_time) // If `wait_time` > 0 ticks change state with using the timer
+    {
+      xSemaphoreGive(protect_timer_semaphore_);
       xTimerChangePeriod(change_state_timer_, wait_time, portMAX_DELAY);
+    }
     else // If `wait_time` == 0 ticks change state directly
+    {
       StateChanger();
+    }
   }
 
   void Interrupt::FsmReset(const GpioState new_state)
   {
     ESPTOOLS_LOGV("(GPIO %u) Remaining in %s", GpioNum(), fsm_state_.ToStr());
+    xSemaphoreTake(protect_timer_semaphore_, 0);
     xTimerStop(change_state_timer_, portMAX_DELAY);
   }
 
@@ -67,7 +74,7 @@ namespace ESPTools
       xSemaphoreGive(interrupt_counting_semaphore_);
       return;
     }
-    // If `FsmState` != `new_state` start the transition of the state
+    // If `fsm_state_` != `new_state` start the transition of the state
     if (fsm_state_ != new_state)
       FsmTransition(new_state); // Start timer: Change `fsm_state_` to `new_state`
     else
@@ -152,9 +159,6 @@ namespace ESPTools
    */
   static uint8_t FindFreeId()
   {
-    // Iterate over each pair in the map and set the corresponding bit in used_ids
-    for (const auto &kvPair : gpio_to_id_map)
-      used_ids.set(kvPair.second);
     // Look for an unused ID
     for (uint8_t i{0}; i < MAX_INTERRUPTS; ++i)
     {
@@ -186,11 +190,13 @@ namespace ESPTools
 
     xSemaphoreTake(global_vars_mutex, portMAX_DELAY);
     {
+      // There can only be 32 filtered interrupts at most
+      assert(!used_ids.all());
       // The first time create the task daemon
       if (used_ids.none())
       {
         const BaseType_t ret{xTaskCreatePinnedToCore(DaemonTask,
-                                                     "Filtered Int",
+                                                     "Interrupt Task",
                                                      3 * 1024,
                                                      nullptr,
                                                      configTIMER_TASK_PRIORITY,
@@ -198,10 +204,10 @@ namespace ESPTools
                                                      APP_CORE_ID)};
         assert(ret);
       }
-      // There can only be 32 filtered interrupts at most
-      assert(!used_ids.all());
       // Get a free ID
       const uint8_t id{FindFreeId()};
+      // Stere the id in the bitset
+      used_ids.set(id);
       // Store the id in `gpio_to_id_map`
       gpio_to_id_map[GpioNum()] = id;
       // Store the interrupt object in `id_to_interrupt_map`
@@ -240,13 +246,13 @@ namespace ESPTools
         low_to_high_time_ticks_(low_to_high_time_ticks),
         high_to_low_time_ticks_(high_to_low_time_ticks)
   {
-    // Create a counting semaphore to protect FSM state changes inside timer callback
-    protect_timer_semaphore_ = xSemaphoreCreateCounting(configTIMER_QUEUE_LENGTH, 0);
-    assert(protect_timer_semaphore_);
     // Create a counting semaphore for interrupt tracking with uxMaxCount
     // set to the maximum value of UBaseType_t
     interrupt_counting_semaphore_ = xSemaphoreCreateCounting(UBASETYPE_MAX, 0);
     assert(interrupt_counting_semaphore_);
+    // Create a binary semaphore to protect FSM state changes inside timer callback
+    protect_timer_semaphore_ = xSemaphoreCreateBinary();
+    assert(protect_timer_semaphore_);
 
     AssignIdStoreInMapsAndCreateDaemonTask();
 
@@ -281,7 +287,7 @@ namespace ESPTools
                                        .pull_down_en = GPIO_PULLDOWN_DISABLE,
                                        .intr_type = GPIO_INTR_DISABLE};
     ESP_ERROR_CHECK(gpio_config(&default_config));
-    // Delete the counting semaphores
+    // Delete the semaphores
     vSemaphoreDelete(interrupt_counting_semaphore_);
     vSemaphoreDelete(protect_timer_semaphore_);
 
