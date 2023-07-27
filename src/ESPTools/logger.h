@@ -1,14 +1,12 @@
 #pragma once
 
+#include "ESPTools/core.h"
+
 #ifdef ESPTOOLS_DEBUG
 #define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
 #endif
 #include <esp_log.h>
 
-// Main tag used for the logging system
-#define ESPTOOLS_LOG_TAG "ESPTools"
-// Macro used to create the subtag for the library modules
-#define ESPTOOLS_LOG_TAG_CREATOR(SUBTAG) ESPTOOLS_LOG_TAG "::" SUBTAG
 // Macros used for logging. Wrapper around ESP log macros that include the caller function
 #define ESPTOOLS_LOGV(format, ...) \
     ESP_LOGV(LOG_TAG, "[%s] " format, __func__ __VA_OPT__(, ) __VA_ARGS__)
