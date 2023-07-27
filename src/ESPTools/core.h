@@ -20,6 +20,9 @@ namespace ESPTools
   static constexpr BaseType_t APP_CORE_ID{1};
 #endif
 
+  // Spinlock used for critical sections
+  static constexpr portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
+
   // Maximum value for UBaseType_t
   extern const UBaseType_t UBASETYPE_MAX;
 

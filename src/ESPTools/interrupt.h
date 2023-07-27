@@ -63,6 +63,58 @@ namespace ESPTools
      */
     Interrupt &operator=(Interrupt &&other) = delete;
 
+    /**
+     * @brief Blocks the calling task until an interrupt occurs or the specified block time expires.
+     * When an interrupt is processed, the interrupt counting semaphore decreases by one.
+     *
+     * @param xBlockTime Time in ticks to wait for the semaphore to become available
+     * @return pdTRUE if an interrupt has occurred, pdFALSE if the block time has expired
+     */
+    BaseType_t WaitForSingleInterrupt(const TickType_t xBlockTime = portMAX_DELAY) const;
+
+    /**
+     * @brief Blocks the calling task until an interrupt occurs or the specified block time expires.
+     * When an interrupt is processed, the interrupt counting semaphore decreases to 0 or 1 so
+     * that the pin state alternates between high and low while minimizing very quick interrupts.
+     * Suitable for cases where rapid interrupts (e.g. ringing or bouncing) can be discarded.
+     *
+     * @param xBlockTime Time in ticks to wait for the semaphore to become available
+     * @return pdTRUE if an interrupt has occurred, pdFALSE if the block time has expired
+     */
+    BaseType_t WaitForLastInterrupt(const TickType_t xBlockTime = portMAX_DELAY) const;
+
+    /**
+     * @return UBaseType_t Number of pending interrupts
+     */
+    inline UBaseType_t PendingInterrupts() const
+    {
+      return uxSemaphoreGetCount(interrupt_counting_semaphore_);
+    }
+
+    /**
+     * @return UBaseType_t Number of redundant interrupts
+     * Interrupts that if removed do not create gaps in interrupt states
+     */
+    inline UBaseType_t RedundantInterrupts() const
+    {
+      const UBaseType_t pending_interrupts{PendingInterrupts()};
+      return pending_interrupts - (pending_interrupts % 2);
+    }
+
+    /**
+     * @return ---------------------------------------------------------------------------------------------------------------
+     */
+    inline GpioState LastState() const { return fsm_state_; };
+
+    /**
+     * @brief Get the current state of the interrupt considering pending interrupts.
+     * It calculates the number of unprocessed interrupts and determines the current interrupt
+     * state by taking pending interrupts into account.
+     *
+     * @return Current state of the interrupt considering pending interrupts
+     */
+    GpioState State() const;
+
   public: // Getters
     /**
      * @return GPIO number associated with the interrupt
@@ -79,7 +131,7 @@ namespace ESPTools
      */
     inline bool InverseLogic() const { return inverse_logic_; }
 
-  public: // Public setters
+  public: // Setters
     /**
      * @return TickType_t& ---------------------------------------------------------------------------------------------------------------
      */
@@ -90,18 +142,7 @@ namespace ESPTools
      */
     inline TickType_t &GoLowTime() { return high_to_low_time_ticks_; }
 
-  private: // Private setters
-    /**
-     * @return GpioState reference to the raw state of the interrupt
-     */
-    inline GpioState &RawState() { return raw_state_; }
-
-    /**
-     * @return GpioState reference to the FSM state of the interrupt
-     */
-    inline GpioState &FsmState() { return fsm_state_; }
-
-  private: // Private member functions
+  private: // Private methods
     /**
      * @brief Checks if the state of the interrupt represented by `RawState` is different
      * from the already filtered interrupt state. Only processes the interrupt if the states differ.

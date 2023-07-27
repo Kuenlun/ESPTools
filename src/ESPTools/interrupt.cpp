@@ -27,20 +27,22 @@ namespace ESPTools
   {
     // Create an alias for direct access to the interrupt object
     Interrupt &interrupt_obj{*static_cast<Interrupt *>(pvTimerGetTimerID(xTimer))};
+    ESPTOOLS_LOGD("(GPIO %u) Inside timer callback with state %s",
+                  interrupt_obj.GpioNum(), interrupt_obj.fsm_state_.ToStr());
     interrupt_obj.StateChanger();
   }
 
   void Interrupt::StateChanger()
   {
-    FsmState() = !FsmState();
+    fsm_state_ = !fsm_state_;
     xSemaphoreGive(interrupt_counting_semaphore_);
-    ESPTOOLS_LOGD("(GPIO %u) State changed to %s", GpioNum(), FsmState().ToStr());
+    ESPTOOLS_LOGD("(GPIO %u) State changed to %s", GpioNum(), fsm_state_.ToStr());
   }
 
   void Interrupt::FsmTransition(const GpioState new_state)
   {
     ESPTOOLS_LOGV("(GPIO %u) Changing from %s to %s",
-                  GpioNum(), FsmState().ToStr(), new_state.ToStr());
+                  GpioNum(), fsm_state_.ToStr(), new_state.ToStr());
     // Determine 'wait_time' based on whether we're switching to high or low state,
     // using respective rise or fall time
     const TickType_t wait_time{(new_state == GpioState::High) ? GoHighTime() : GoLowTime()};
@@ -52,24 +54,24 @@ namespace ESPTools
 
   void Interrupt::FsmReset(const GpioState new_state)
   {
-    ESPTOOLS_LOGV("(GPIO %u) Remaining in %s", GpioNum(), FsmState().ToStr());
+    ESPTOOLS_LOGV("(GPIO %u) Remaining in %s", GpioNum(), fsm_state_.ToStr());
     xTimerStop(change_state_timer_, portMAX_DELAY);
   }
 
   void Interrupt::ProcessInterrupt(const GpioState new_state)
   {
-    // Set `FsmState()` to the opposite of `new_state` the first time
-    if (FsmState() == GpioState::Undefined)
+    // Set `fsm_state_` to the opposite of `new_state` the first time
+    if (fsm_state_ == GpioState::Undefined)
     {
-      FsmState() = !new_state;
+      fsm_state_ = !new_state;
       xSemaphoreGive(interrupt_counting_semaphore_);
       return;
     }
     // If `FsmState` != `new_state` start the transition of the state
-    if (FsmState() != new_state)
-      FsmTransition(new_state); // Start timer: Change `FsmState()` to `new_state`
+    if (fsm_state_ != new_state)
+      FsmTransition(new_state); // Start timer: Change `fsm_state_` to `new_state`
     else
-      FsmReset(new_state); // Stop timer: Remain in `FsmState()`
+      FsmReset(new_state); // Stop timer: Remain in `fsm_state_`
   }
 
   void Interrupt::Debouncer(const GpioState new_state)
@@ -101,7 +103,7 @@ namespace ESPTools
       // processing previous interrupts but before clearing the notification value.
       // This approach ensures all interrupts are properly processed.
       std::bitset<MAX_INTERRUPTS> notify_value{ulTaskNotifyTake(pdTRUE, portMAX_DELAY)};
-      //ESPTOOLS_LOGD("Got notification value: %s", notify_value.to_string().c_str());
+      // ESPTOOLS_LOGD("Got notification value: %s", notify_value.to_string().c_str());
 
       // Check on bits of `notify_value` to determine triggered Interrupts in ISR
       for (auto i{notify_value._Find_first()}; i < notify_value.size(); i = notify_value._Find_next(i))
@@ -125,7 +127,7 @@ namespace ESPTools
     // Get the GPIO level
     const auto raw_gpio_level{gpio_get_level(interrupt_obj.GpioNum())};
     // Save the raw state of the interrupt (invert logic if necessary)
-    interrupt_obj.RawState() = GpioState(raw_gpio_level, interrupt_obj.InverseLogic());
+    interrupt_obj.raw_state_ = GpioState(raw_gpio_level, interrupt_obj.InverseLogic());
 
     BaseType_t xHigherPriorityTaskWoken{pdFALSE};
     if (xSemaphoreTakeFromISR(global_vars_mutex, &xHigherPriorityTaskWoken))
@@ -284,6 +286,53 @@ namespace ESPTools
     vSemaphoreDelete(protect_timer_semaphore_);
 
     ESP_LOGI(LOG_TAG, "Interrupt object destroyed on GPIO %u", GpioNum());
+  }
+
+  BaseType_t Interrupt::WaitForSingleInterrupt(const TickType_t xBlockTime) const
+  {
+    // Process one interrupt (decrease the interrupt semaphore by 1)
+    return xSemaphoreTake(interrupt_counting_semaphore_, xBlockTime);
+  }
+
+  BaseType_t Interrupt::WaitForLastInterrupt(const TickType_t xBlockTime) const
+  {
+    // Process one interrupt (decrease the interrupt semaphore by 1)
+    if (xSemaphoreTake(interrupt_counting_semaphore_, xBlockTime))
+    {
+      // Get the number of redundant interrupts
+      const UBaseType_t redundant_interrupts{RedundantInterrupts()};
+      // Since FreeRTOS doesn't offer a direct way to decrease the semaphore count to a specific
+      // value, a for loop is used to decrement the counting semaphore value to either 0 or 1,
+      // depending on whether the number of remaining interrupts is even or odd.
+      for (UBaseType_t i{0}; i < redundant_interrupts; ++i)
+        xSemaphoreTake(interrupt_counting_semaphore_, 0);
+#ifdef ESPTOOLS_DEBUG
+      if (redundant_interrupts)
+        ESP_LOGV(LOG_TAG, "Discarded %u redundant interrupts", redundant_interrupts);
+#endif
+      return pdTRUE;
+    }
+    else
+    {
+      return pdFALSE;
+    }
+  }
+
+  GpioState Interrupt::State() const
+  {
+    // Disable interrupts to ensure an atomic read, as it may lead to a race condition
+    // where an interrupt could occur and execute the ISR function between obtaining
+    // `pending_interrupts` and `current_state`, resulting in an updated value of
+    // `current_state` but not `pending_interrupts`.
+    taskENTER_CRITICAL(&spinlock);
+    const UBaseType_t pending_interrupts{PendingInterrupts()};
+    const GpioState current_state{LastState()};
+    taskEXIT_CRITICAL(&spinlock);
+    // Return the corrected state based on pending interrupts
+    if (pending_interrupts % 2)
+      return !current_state;
+    else
+      return current_state;
   }
 
 } // namespace ESPTools
