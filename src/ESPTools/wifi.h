@@ -2,8 +2,6 @@
 
 #include "ESPTools/core.h"
 
-#include <esp_wifi_types.h>
-
 namespace ESPTools
 {
 
@@ -14,15 +12,7 @@ namespace ESPTools
     static constexpr char LOG_TAG[]{"WiFi"};
 
     /**
-     * @brief Construct a new WiFi object
-     *
-     */
-    WiFi(const char *const ssid,
-         const char *const pass,
-         const uint32_t max_retries);
-
-    /**
-     * @brief Initialize and configure the ESP32 WiFi module for station (STA) mode.
+     * @brief Initialize and configure the ESP32 WiFi module for station (STA) mode and connects to STA
      *
      * This function performs the following steps:
      *  1. Initializes the Non-Volatile Storage (NVS).
@@ -36,26 +26,24 @@ namespace ESPTools
      *  9. Configures WiFi settings, including SSID and password.
      * 10. Starts WiFi in station mode.
      */
-    void wifi_init_sta();
+    static esp_err_t ConnectToSTA(const char *const ssid,
+                                  const char *const pass,
+                                  const uint32_t max_retries = 5);
 
     /**
      * @brief Wait for a WiFi connection or connection failure.
      *
      * This function waits until either a successful WiFi connection (WIFI_CONNECTED_BIT) is established
      * or the maximum number of connection retries (WIFI_FAIL_BIT) is reached. The event bits are set by
-     * the 'event_handler()' function.
+     * the 'EventHandler()' function.
      *
      * @return true if a successful connection is established, false if the connection fails.
      */
-    bool wait_for_wifi_connection() const;
+    static esp_err_t WaitForWiFiConnection();
 
-    inline const char *get_ssid() const { return reinterpret_cast<const char *>(_wifi_cfg.sta.ssid); };
+    static const char *GetSSID();
 
-    inline const char *get_pass() const { return reinterpret_cast<const char *>(_wifi_cfg.sta.password); };
-
-  private:
-    wifi_config_t _wifi_cfg;
-    uint32_t _max_retries;
+    static const char *GetPASS();
 
   }; // class WiFi
 

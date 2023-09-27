@@ -21,10 +21,8 @@ void app_main()
   esp_log_level_set(ESPTools::NVS::LOG_TAG, ESP_LOG_VERBOSE);
   esp_log_level_set(ESPTools::WiFi::LOG_TAG, ESP_LOG_VERBOSE);
 
-  ESPTools::WiFi wifi_obj(EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS, 5);
-
   // Configure and initialize the ESP32 WiFi module in station (STA) mode
-  wifi_obj.wifi_init_sta();
+  ESPTools::WiFi::ConnectToSTA(EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS, 5);
   // Wait until wifi is connected
-  wifi_obj.wait_for_wifi_connection();
+  ESPTools::WiFi::WaitForWiFiConnection();
 }
