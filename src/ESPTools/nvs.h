@@ -9,7 +9,7 @@ namespace ESPTools
   {
 
     // Tag used for the logging system
-    static constexpr char LOG_TAG[]{"NVS"};
+    static constexpr char LOG_TAG[]{ESPTOOLS_LOG_TAG_CREATOR("NVS")};
 
     /**
      * @brief Initialize the Non-Volatile Storage (NVS) system.

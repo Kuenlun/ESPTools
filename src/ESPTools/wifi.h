@@ -9,7 +9,7 @@ namespace ESPTools
   {
   public:
     // Tag used for the logging system
-    static constexpr char LOG_TAG[]{"WiFi"};
+    static constexpr char LOG_TAG[]{ESPTOOLS_LOG_TAG_CREATOR("WiFi")};
 
     /**
      * @brief Initialize and configure the ESP32 WiFi module for station (STA) mode and connects to STA
