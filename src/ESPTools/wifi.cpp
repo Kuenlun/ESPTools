@@ -66,25 +66,81 @@ namespace ESPTools
                                     // Note: Enabling this may cause connection time to increase in case the best AP doesn't behave properly.
                                     .failure_retry_cnt = 0}};
 
-  /**
-   * @brief Event handler function for managing WiFi and IP-related events.
-   *
-   * This function is responsible for handling events related to WiFi and IP connectivity on the ESP32.
-   *
-   * For WiFi events (event_base == WIFI_EVENT), it handles:
-   * - WIFI_EVENT_STA_START: Initiates the WiFi connection process.
-   * - WIFI_EVENT_STA_DISCONNECTED: Manages disconnections, retries connection if possible.
-   *
-   * For IP events (event_base == IP_EVENT), it handles:
-   * - IP_EVENT_STA_GOT_IP: Processes successful IP address acquisition, resets retry counter.
-   *
-   * @param arg Unused argument.
-   * @param event_base The event base associated with the event.
-   * @param event_id The event identifier.
-   * @param event_data Event-specific data.
-   */
-  static void EventHandler(void *arg, esp_event_base_t event_base,
-                            int32_t event_id, void *event_data)
+  esp_err_t WiFi::ConnectToSTA(const char *const ssid,
+                               const char *const pass,
+                               const uint32_t max_retries)
+  {
+    strncpy(reinterpret_cast<char *>(wifi_cfg.sta.ssid), ssid, sizeof(wifi_cfg.sta.ssid));
+    strncpy(reinterpret_cast<char *>(wifi_cfg.sta.password), pass, sizeof(wifi_cfg.sta.password));
+
+    max_reconnection_retries = max_retries;
+
+    // Initialize NVS
+    ESPTools::NVS::init_nvs();
+
+    // Initialize the underlying TCP/IP stack
+    ESP_ERROR_CHECK(esp_netif_init());
+    // Create default event loop task
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    // Create a default WiFi station network interface for STA mode
+    esp_netif_create_default_wifi_sta();
+    // Initialize WiFi with default configuration settings
+    static const wifi_init_config_t wifi_default_init_cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&wifi_default_init_cfg));
+
+    // Create an EventGroup to manage WiFi related events
+    wifi_event_group = xEventGroupCreate();
+    assert(wifi_event_group);
+    // Register event handler instances for WiFi events
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,       // Register for all WiFi events
+                                                        ESP_EVENT_ANY_ID, // Handle any event ID
+                                                        &EventHandler,    // Event handler function
+                                                        nullptr,          // No user data needed
+                                                        nullptr));        // No handler instance tracking
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,            // Register for IP-related events
+                                                        IP_EVENT_STA_GOT_IP, // Handle STA got IP event
+                                                        &EventHandler,       // Event handler function
+                                                        nullptr,             // No user data needed
+                                                        nullptr));           // No handler instance tracking
+
+    // Set the WiFi operating mode as station
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    // Configure WiFi settings, including SSID and password
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
+    // Start WiFi
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESPTOOLS_LOGI("WiFi STA initialized successfully");
+    return ESP_OK;
+  }
+
+  esp_err_t WiFi::WaitForWiFiConnection()
+  {
+    EventBits_t bits{xEventGroupWaitBits(wifi_event_group,
+                                         WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                         pdFALSE,
+                                         pdFALSE,
+                                         portMAX_DELAY)};
+
+    if (bits & WIFI_CONNECTED_BIT)
+    {
+      ESPTOOLS_LOGI("Connected to SSID: %s", GetSSID());
+      return ESP_OK;
+    }
+    else if (bits & WIFI_FAIL_BIT)
+    {
+      ESP_LOGE(LOG_TAG, "Failed to connect to SSID: %s", GetSSID());
+    }
+    return ESP_FAIL;
+  }
+
+  const char *WiFi::GetSSID() { return reinterpret_cast<const char *>(wifi_cfg.sta.ssid); };
+
+  const char *WiFi::GetPASS() { return reinterpret_cast<const char *>(wifi_cfg.sta.password); };
+
+  void WiFi::EventHandler(void *arg, esp_event_base_t event_base,
+                          int32_t event_id, void *event_data)
   {
     static uint32_t s_retry_num{0}; // Counter for connection retries
 
@@ -141,78 +197,5 @@ namespace ESPTools
       }
     }
   }
-
-  esp_err_t WiFi::ConnectToSTA(const char *const ssid,
-                               const char *const pass,
-                               const uint32_t max_retries)
-  {
-    strncpy(reinterpret_cast<char *>(wifi_cfg.sta.ssid), ssid, sizeof(wifi_cfg.sta.ssid));
-    strncpy(reinterpret_cast<char *>(wifi_cfg.sta.password), pass, sizeof(wifi_cfg.sta.password));
-
-    max_reconnection_retries = max_retries;
-
-    // Initialize NVS
-    ESPTools::NVS::init_nvs();
-
-    // Initialize the underlying TCP/IP stack
-    ESP_ERROR_CHECK(esp_netif_init());
-    // Create default event loop task
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    // Create a default WiFi station network interface for STA mode
-    esp_netif_create_default_wifi_sta();
-    // Initialize WiFi with default configuration settings
-    static const wifi_init_config_t wifi_default_init_cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&wifi_default_init_cfg));
-
-    // Create an EventGroup to manage WiFi related events
-    wifi_event_group = xEventGroupCreate();
-    assert(wifi_event_group);
-    // Register event handler instances for WiFi events
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,       // Register for all WiFi events
-                                                        ESP_EVENT_ANY_ID, // Handle any event ID
-                                                        &EventHandler,   // Event handler function
-                                                        nullptr,          // No user data needed
-                                                        nullptr));        // No handler instance tracking
-
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,            // Register for IP-related events
-                                                        IP_EVENT_STA_GOT_IP, // Handle STA got IP event
-                                                        &EventHandler,      // Event handler function
-                                                        nullptr,             // No user data needed
-                                                        nullptr));           // No handler instance tracking
-
-    // Set the WiFi operating mode as station
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    // Configure WiFi settings, including SSID and password
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
-    // Start WiFi
-    ESP_ERROR_CHECK(esp_wifi_start());
-
-    ESPTOOLS_LOGI("WiFi STA initialized successfully");
-    return ESP_OK;
-  }
-
-  esp_err_t WiFi::WaitForWiFiConnection()
-  {
-    EventBits_t bits{xEventGroupWaitBits(wifi_event_group,
-                                         WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                         pdFALSE,
-                                         pdFALSE,
-                                         portMAX_DELAY)};
-
-    if (bits & WIFI_CONNECTED_BIT)
-    {
-      ESPTOOLS_LOGI("Connected to SSID: %s", GetSSID());
-      return ESP_OK;
-    }
-    else if (bits & WIFI_FAIL_BIT)
-    {
-      ESP_LOGE(LOG_TAG, "Failed to connect to SSID: %s", GetSSID());
-    }
-    return ESP_FAIL;
-  }
-
-  const char *WiFi::GetSSID() { return reinterpret_cast<const char *>(wifi_cfg.sta.ssid); };
-
-  const char *WiFi::GetPASS() { return reinterpret_cast<const char *>(wifi_cfg.sta.password); };
 
 } // namespace ESPTools

@@ -2,6 +2,8 @@
 
 #include "ESPTools/core.h"
 
+#include <esp_event_base.h>
+
 namespace ESPTools
 {
 
@@ -44,6 +46,27 @@ namespace ESPTools
     static const char *GetSSID();
 
     static const char *GetPASS();
+
+  private:
+    /**
+     * @brief Event handler function for managing WiFi and IP-related events.
+     *
+     * This function is responsible for handling events related to WiFi and IP connectivity on the ESP32.
+     *
+     * For WiFi events (event_base == WIFI_EVENT), it handles:
+     * - WIFI_EVENT_STA_START: Initiates the WiFi connection process.
+     * - WIFI_EVENT_STA_DISCONNECTED: Manages disconnections, retries connection if possible.
+     *
+     * For IP events (event_base == IP_EVENT), it handles:
+     * - IP_EVENT_STA_GOT_IP: Processes successful IP address acquisition, resets retry counter.
+     *
+     * @param arg Unused argument.
+     * @param event_base The event base associated with the event.
+     * @param event_id The event identifier.
+     * @param event_data Event-specific data.
+     */
+    static void EventHandler(void *arg, esp_event_base_t event_base,
+                             int32_t event_id, void *event_data);
 
   }; // class WiFi
 

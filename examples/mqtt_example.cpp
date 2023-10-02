@@ -30,7 +30,6 @@ void app_main()
 
   ESPTools::MQTT mqtt_client("mqtt://broker.hivemq.com");
   mqtt_client.Subscribe("Kuenlun_MQTT_Test");
-  vTaskDelay(pdMS_TO_TICKS(10000));
   
   // The mqtt_client is destroyed at this point.
 }
